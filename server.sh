@@ -83,7 +83,8 @@ qm set $VMID -scsi0 ${STORAGE}:${DISK0},discard=on
 echo "Attached disk to VM as scsi0"
 
 # Set VM disk and boot options
-qm set $VMID -efidisk0 ${STORAGE}:${DISK0},efitype=4m -boot order=scsi0,ide2
+qm set $VMID -efidisk0 ${STORAGE}:${DISK0},efitype=4m
+qm set $VMID -boot order=scsi0
 echo "Configured VM disk and boot options."
 
 # Start VM
