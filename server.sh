@@ -63,9 +63,18 @@ echo "Imported disk: $FILE"
 # Attach cloud-init drive
 qm set $VMID --ide2 $STORAGE:cloudinit
 
+# Prompt for required inputs if not set
+if [ -z "$CI_USER" ]; then
+    read -p "Enter cloud-init username (CI_USER): " CI_USER
+fi
+
+if [ -z "$CI_PASSWORD" ]; then
+    read -s -p "Enter cloud-init password (CI_PASSWORD): " CI_PASSWORD
+    echo
+fi
+
 # Set cloud-init options
-qm set $VMID --ciuser owner --cipassword owner
-qm set $VMID --sshkeys ~/.ssh/id_rsa.pub
+qm set $VMID --ciuser $CI_USER --cipassword $CI_PASSWORD
 qm set $VMID --ipconfig0 ip=dhcp
 
 # Attach the imported disk to the VM as scsi0
