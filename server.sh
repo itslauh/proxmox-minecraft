@@ -1,96 +1,49 @@
-#!/usr/bin/env bash
-set -e
+#!/bin/bash
 
-# Generate MAC address
-GEN_MAC=02:$(openssl rand -hex 5 | awk '{print toupper($0)}' | sed 's/\(..\)/\1:/g; s/.$//')
-echo "Generated MAC Address: $GEN_MAC"
+# Prompt for VM details
+echo "Enter the VM name (e.g., ubuntu-vm):"
+read VM_NAME
 
-# Get next VM ID
-NEXTID=$(pvesh get /cluster/nextid)
-echo "Next VM ID: $NEXTID"
+echo "Enter the root username (e.g., ubuntu-admin):"
+read ROOT_USER
 
-# Create temporary directory
-TEMP_DIR=$(mktemp -d)
-echo "Temporary Directory: $TEMP_DIR"
-pushd $TEMP_DIR >/dev/null
+echo "Enter the root password:"
+read -s ROOT_PASS
 
-# Download Ubuntu image
-URL=https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
-echo "Downloading image from: $URL"
-wget -q $URL
-FILE=$(basename $URL)
-echo "Downloaded File: $FILE"
+echo "Enter the disk size for the VM (in GB):"
+read DISK_SIZE
 
-# Get storage
-STORAGE=$(pvesm status -content images | awk 'NR==2 {print $1}')
-if [ -z "$STORAGE" ]; then
-    echo "Error: STORAGE is not set."
-    exit 1
-fi
-echo "Using Storage: $STORAGE"
+# Set VM ID (incremental approach based on highest ID)
+VMID=$(pvesh get /nodes/$(hostname)/qemu | jq '.[].vmid' | sort -n | tail -n 1)
+VMID=$((VMID + 1))
 
-# Set VM ID
-VMID=$NEXTID
-echo "VM ID: $VMID"
+# Define VM configuration variables
+ISO_PATH="/var/lib/vz/template/iso/ubuntu-20.04.3-live-server-amd64.iso"  # Replace with your actual ISO path
+STORAGE_NAME="local-lvm"  # Adjust for your storage setup
 
-# Set storage type
-STORAGE_TYPE=$(pvesm status -storage $STORAGE | awk 'NR>1 {print $2}')
-if [ -z "$STORAGE_TYPE" ]; then
-    echo "Error: STORAGE_TYPE is not set."
-    exit 1
-fi
-echo "Storage Type: $STORAGE_TYPE"
+# Create the VM
+echo "Creating VM with ID: $VMID"
+qm create $VMID --name $VM_NAME --memory 2048 --cores 2 --net0 virtio,bridge=vmbr0 --ide2 $STORAGE_NAME:cloudinit
 
-# Set disk variables
-DISK_EXT=".img"
-DISK_IMPORT="-format raw"
-DISK0=vm-${VMID}-disk-0${DISK_EXT}
-DISK0_REF=${STORAGE}:${DISK0}
-echo "Disk Reference: $DISK0_REF"
+# Set the disk size for the VM
+qm set $VMID --scsihw virtio-scsi-pci --scsi0 $STORAGE_NAME:32,format=qcow2
+qm set $VMID --ide0 $ISO_PATH,media=cdrom
 
-# Create VM
-qm create $VMID -agent 1 -tablet 0 -localtime 1 -bios ovmf -cores 2 -memory 8192 -name ubuntu -net0 virtio,bridge=vmbr0,macaddr=$GEN_MAC -onboot 1 -ostype l26 -scsihw virtio-scsi-pci
-echo "Created VM with ID: $VMID"
+# Set up the root user and password via cloud-init
+echo "Setting up Cloud-Init for user $ROOT_USER"
+qm set $VMID --ciuser $ROOT_USER --cipassword $ROOT_PASS --ipconfig0 ip=dhcp
 
-# Allocate storage
-pvesm alloc $STORAGE $VMID $DISK0 40G
-echo "Allocated storage for disk: $DISK0"
+# Setup additional disk size if needed (this sets a disk size for the VM)
+qm set $VMID --scsi1 $STORAGE_NAME:$DISK_SIZE,format=qcow2
 
-# Import disk
-qm importdisk $VMID ${FILE} $STORAGE ${DISK_IMPORT}
-echo "Imported disk: $FILE"
-
-# Attach the imported disk to the VM as sata0
-qm set $VMID -sata0 ${STORAGE}:${DISK0},discard=on
-echo "Attached disk to VM as sata0"
-
-# Attach cloud-init drive
-qm set $VMID --ide2 $STORAGE:cloudinit,media=cdrom
-echo "Attached cloud-init drive."
-
-# Prompt for required inputs if not set
-if [ -z "$CI_USER" ]; then
-    read -p "Enter cloud-init username (CI_USER): " CI_USER
-fi
-
-if [ -z "$CI_PASSWORD" ]; then
-    read -s -p "Enter cloud-init password (CI_PASSWORD): " CI_PASSWORD
-    echo
-fi
-
-# Set cloud-init options
-qm set $VMID --ciuser $CI_USER --cipassword $CI_PASSWORD
-qm set $VMID --ipconfig0 ip=dhcp
-
-# Set VM disk and boot options
-qm set $VMID -efidisk0 ${STORAGE}:vm-${VMID}-efi,efitype=4m,format=raw
-qm set $VMID -bootdisk sata0 -boot order=sata0
-echo "Configured VM disk and boot options."
-
-# Create EFI disk if not already created
-qm set $VMID -efidisk0 ${STORAGE}:vm-${VMID}-efi,efitype=4m,format=raw
-echo "Created EFI disk."
-
-# Start VM
+# Start the VM
+echo "Starting the VM..."
 qm start $VMID
-echo "Started VM with ID: $VMID"
+
+# Final information
+echo "VM setup is complete!"
+echo "VM ID: $VMID"
+echo "Root user: $ROOT_USER"
+echo "Disk size: ${DISK_SIZE}GB"
+echo "Ubuntu ISO: $ISO_PATH"
+echo "You can access your VM using SSH once it's up and running."
