@@ -61,7 +61,8 @@ qm importdisk $VMID ${FILE} $STORAGE ${DISK_IMPORT}
 echo "Imported disk: $FILE"
 
 # Attach cloud-init drive
-qm set $VMID --ide2 $STORAGE:cloudinit
+qm set $VMID --ide2 $STORAGE:cloudinit,media=cdrom
+echo "Attached cloud-init drive."
 
 # Prompt for required inputs if not set
 if [ -z "$CI_USER" ]; then
@@ -82,7 +83,7 @@ qm set $VMID -scsi0 ${STORAGE}:${DISK0},discard=on
 echo "Attached disk to VM as scsi0"
 
 # Set VM disk and boot options
-qm set $VMID -efidisk0 ${STORAGE}:${DISK0},efitype=4m -boot order=scsi0
+qm set $VMID -efidisk0 ${STORAGE}:${DISK0},efitype=4m -boot order=scsi0,ide2
 echo "Configured VM disk and boot options."
 
 # Start VM
