@@ -60,6 +60,10 @@ echo "Allocated storage for disk: $DISK0"
 qm importdisk $VMID ${FILE} $STORAGE ${DISK_IMPORT}
 echo "Imported disk: $FILE"
 
+# Attach the imported disk to the VM as scsi0
+qm set $VMID -scsi0 ${STORAGE}:${DISK0},discard=on
+echo "Attached disk to VM as scsi0"
+
 # Attach cloud-init drive
 qm set $VMID --ide2 $STORAGE:cloudinit,media=cdrom
 echo "Attached cloud-init drive."
@@ -78,13 +82,9 @@ fi
 qm set $VMID --ciuser $CI_USER --cipassword $CI_PASSWORD
 qm set $VMID --ipconfig0 ip=dhcp
 
-# Attach the imported disk to the VM as scsi0
-qm set $VMID -scsi0 ${STORAGE}:${DISK0},discard=on
-echo "Attached disk to VM as scsi0"
-
 # Set VM disk and boot options
 qm set $VMID -efidisk0 ${STORAGE}:${DISK0},efitype=4m
-qm set $VMID -boot order=scsi0
+qm set $VMID -bootdisk scsi0 -boot order=scsi0
 echo "Configured VM disk and boot options."
 
 # Start VM
